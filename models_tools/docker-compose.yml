@@ -1,0 +1,8 @@
+services:
+  jupyter:
+    image: jupyter/scipy-notebook
+    volumes:
+      - ./:/app
+    working_dir: /app
+    ports:
+      - "8888:8888"

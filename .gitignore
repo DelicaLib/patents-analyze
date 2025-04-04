@@ -1,0 +1,7 @@
+**/.ipynb_checkpoints
+models_tools/REL model src/ru_patents_rel
+models_tools/REL model src/rel_component/training
+models_tools/NER model src/training
+models_tools/NER model src/ru_patents_ner
+.idea/
+**/__pycache__

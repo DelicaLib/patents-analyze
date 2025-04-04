@@ -1,0 +1,38 @@
+train_gpu:
+  cmd: python -m weasel run train_gpu
+  script:
+    - python -m spacy train configs/rel_trf.cfg --output training --paths.train data/train.spacy
+      --paths.dev data/dev.spacy -c ./scripts/custom_functions.py --gpu-id 0
+  deps:
+    - path: data/train.spacy
+      md5: 6f1e4f469973b87832ee69a4c85c1095
+    - path: data/dev.spacy
+      md5: 928679b9c81aff45a75e28ea2fdf1016
+  outs:
+    - path: training/model-best
+      md5: c54f80012b59223f4f0eec7a80d2ed72
+evaluate:
+  cmd: python -m weasel run evaluate
+  script:
+    - python ./scripts/evaluate.py training/model-best data/test.spacy False
+  deps:
+    - path: training/model-best
+      md5: c54f80012b59223f4f0eec7a80d2ed72
+    - path: data/test.spacy
+      md5: 9a79b100457f383acce4d42b63482863
+  outs: []
+data:
+  cmd: python -m weasel run data
+  script:
+    - python ./scripts/parse_data.py assets/annotations.jsonl data/train.spacy data/dev.spacy
+      data/test.spacy
+  deps:
+    - path: assets/annotations.jsonl
+      md5: 82bb4d1828057a91dd86085f70fb4991
+  outs:
+    - path: data/train.spacy
+      md5: 2b570a59e9cc4dbfc89e2bc2a07ea308
+    - path: data/dev.spacy
+      md5: 7fb0c7c231d68e2daacb63db3096a3cc
+    - path: data/test.spacy
+      md5: f8068e2d934af0322752a0c776ad00a2
