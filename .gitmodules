@@ -1,0 +1,3 @@
+[submodule "patent-parser"]
+	path = patent-parser
+	url = https://github.com/iamsuchafitta/patent-parser
