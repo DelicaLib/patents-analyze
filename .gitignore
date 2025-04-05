@@ -5,3 +5,4 @@ models_tools/NER model src/training
 models_tools/NER model src/ru_patents_ner
 .idea/
 **/__pycache__
+.venv
