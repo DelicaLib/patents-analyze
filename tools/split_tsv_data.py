@@ -1,5 +1,4 @@
 import os
-import sys
 from collections import Counter
 import io
 from glob import glob
@@ -25,7 +24,14 @@ def get_proportion_counter(entity_data: list[str]):
     for doc in entity_data:
         if len(doc) == 0:
             continue
-        for word, entity in map(lambda x: str(x).split(" "), doc.split("\n")):
+
+        def split_token(s: str):
+            tmp = s.split(" ")
+            if len(tmp) > 2:
+                return [tmp[0], tmp[-1]]
+            return tmp
+
+        for word, entity in map(split_token, doc.split("\n")):
             if entity.startswith("B-"):
                 entity_counter[entity[2:]] += 1
     return entity_counter
@@ -38,13 +44,20 @@ def print_proportion(entity_counter: Counter):
 
 
 def parse_tsv(tsv_content: str):
-    cur_tsvs = tsv_content.replace("-DOCSTART- -X- O\n", "").replace("-X- _ ", "").replace("O1 ", "").split("\n\n")
+    cur_tsvs = (
+        tsv_content.replace("-DOCSTART- -X- O\n", "")
+        .replace("-DOCSTART- -X- O O\n", "")
+        .replace("-X- _ ", "")
+        .replace("O1 ", "")
+        .replace("\t", " ")
+        .split("\n\n")
+    )
     for idx, tsv in enumerate(cur_tsvs, 0):
-        if tsv.find("NN") != -1:
-            tsv_tokens = tsv.split("\n")
-            for i, tokens in enumerate(tsv_tokens, 0):
-                tsv_tokens[i] = "\t".join(tokens.split("\t")[::2])
-            cur_tsvs[idx] = "\n".join(tsv_tokens)
+
+        tsv_tokens = tsv.replace(" NN ", " ").strip().split("\n")
+        for i, tokens in enumerate(tsv_tokens, 0):
+            tsv_tokens[i] = "\t".join(tokens.split("\t")[::2])
+        cur_tsvs[idx] = "\n".join(tsv_tokens)
 
     tsvs_tmp = set()
     tsvs_result = []
