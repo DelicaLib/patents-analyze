@@ -15,6 +15,8 @@ import pprint
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer
 
+logging.basicConfig(format="%(message)s")
+
 
 class Entity(Enum):
     COMPONENT = "COMPONENT"
