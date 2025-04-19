@@ -189,9 +189,9 @@ def convert_procces(ctx: click.Context, file_type: str, covert_func):
     output_file_paths_dict = {}
     for input_file in input_files:
         new_file_path = os.path.basename(input_file).split(".")[0] + ".json"
-        output_file = "/".join([output_dir.strip("/\\"), new_file_path])
+        output_file = "/".join([output_dir.rstrip("/\\"), new_file_path])
         if new_file_path in output_file_paths_dict:
-            output_file = "/".join([output_dir.strip("/\\"), str(output_file_paths_dict[new_file_path]) + new_file_path])
+            output_file = "/".join([output_dir.rstrip("/\\"), str(output_file_paths_dict[new_file_path]) + new_file_path])
         else:
             output_file_paths_dict[new_file_path] = 0
         output_file_paths_dict[new_file_path] += 1
@@ -205,7 +205,7 @@ def convert_procces(ctx: click.Context, file_type: str, covert_func):
     result_docs_count = 0
     for result, output_path in results:
         result_docs_count += len(result)
-        with io.open(output_path, mode="w", encoding="utf-8") as f:
+        with open(output_path, mode="w", encoding="utf-8") as f:
             f.write(json.dumps(result, ensure_ascii=False))
             logging.info(f"Сохранено {output_path}. Количество документов: {len(result)}")
     logging.info(f"Итоговое количество документов: {result_docs_count}")
@@ -238,10 +238,10 @@ def cli(
     input_path = input_path.rstrip("/\\")
     if not os.path.isdir(output_path):
         logging.error("output_path должна быть существующей директорией")
-        return
+        exit()
     if not os.path.exists(input_path):
         logging.error("input_path не существует")
-        return
+        exit()
     ctx.ensure_object(dict)
     ctx.obj["input_path"] = input_path
     ctx.obj["recursive"] = recursive

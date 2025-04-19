@@ -1,3 +1,6 @@
 [submodule "patent-parser"]
 	path = patent-parser
 	url = https://github.com/iamsuchafitta/patent-parser
+[submodule "label_studio_ml_backend"]
+	path = label_studio_ml_backend
+	url = https://github.com/HumanSignal/label-studio-ml-backend
