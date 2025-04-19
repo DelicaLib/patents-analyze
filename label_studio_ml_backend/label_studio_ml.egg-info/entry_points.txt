@@ -1,0 +1,2 @@
+[console_scripts]
+label-studio-ml = label_studio_ml.server:main

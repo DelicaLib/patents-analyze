@@ -7,3 +7,5 @@ models_tools/NER model src/ru_patents_ner
 **/__pycache__
 .venv
 tmp
+
+label_studio_ml_backend/cache.db
