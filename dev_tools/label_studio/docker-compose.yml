@@ -1,0 +1,15 @@
+services:
+  labelstudio:
+    image: heartexlabs/label-studio:latest
+    container_name: labelstudio
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./data:/label-studio/data
+    restart: unless-stopped
+    networks:
+      - labelstudio
+
+networks:
+  labelstudio:
+    external: true

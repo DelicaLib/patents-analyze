@@ -1,0 +1,11 @@
+services:
+  python_interpreter:
+    build:
+      context: ..
+      dockerfile: dev_tools/Python313.Dockerfile
+    volumes:
+      - ../:/app
+    working_dir: /app
+    command: bash
+    tty: true
+    stdin_open: true
