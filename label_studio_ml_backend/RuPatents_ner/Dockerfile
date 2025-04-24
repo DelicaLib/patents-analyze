@@ -3,6 +3,7 @@ ARG PYTHON_VERSION=3.12
 
 FROM python:${PYTHON_VERSION}-slim AS python-base
 ARG TEST_ENV
+ARG DEBUG
 
 WORKDIR /app
 
@@ -11,7 +12,8 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=${PORT:-9090} \
     PIP_CACHE_DIR=/.cache \
     WORKERS=1 \
-    THREADS=8
+    THREADS=8 \
+    DEBUG=${DEBUG}
 
 # Update the base OS
 RUN --mount=type=cache,target="/var/cache/apt",sharing=locked \
@@ -40,9 +42,14 @@ RUN --mount=type=cache,target=${PIP_CACHE_DIR},sharing=locked \
     if [ "$TEST_ENV" = "true" ]; then \
       pip install -r requirements-test.txt; \
     fi
+# build only when TEST_ENV="true"
+RUN --mount=type=cache,target=${PIP_CACHE_DIR},sharing=locked \
+    if [ "$DEBUG" = "true" ]; then \
+      pip install pydevd-pycharm; \
+    fi
 
 COPY . .
 
 EXPOSE 9090
 
-CMD gunicorn --preload --bind :$PORT --workers $WORKERS --threads $THREADS --timeout 0 _wsgi:app
+CMD gunicorn --preload --reload --bind :$PORT --workers $WORKERS --threads $THREADS --timeout 0 _wsgi:app
