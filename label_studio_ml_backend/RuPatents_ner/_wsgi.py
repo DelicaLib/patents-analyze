@@ -32,6 +32,18 @@ logging.config.dictConfig({
   }
 })
 
+
+
+debug = os.getenv("DEBUG", "false")
+
+if debug == "true":
+    logging.info("Staring label_studio_ml_backend with debugging")
+    import pydevd_pycharm
+
+    logging.info("Connecting to pycharm")
+    pydevd_pycharm.settrace('host.docker.internal', port=5042, stdoutToServer=True, stderrToServer=True)
+    logging.info("Debugger attached.")
+
 from label_studio_ml.api import init_app
 from model import NewModel
 

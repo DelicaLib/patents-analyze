@@ -8,6 +8,7 @@ services:
       context: .
       args:
         TEST_ENV: ${TEST_ENV}
+        DEBUG: ${DEBUG}
     environment:
       - LOG_LEVEL=DEBUG
       - ANY=PARAMETER
@@ -19,6 +20,7 @@ services:
     volumes:
       - "./data/server:/data"
       - ./model.py:/app/model.py
+      - ./_wsgi.py:/app/_wsgi.py
     networks:
       - labelstudio
 

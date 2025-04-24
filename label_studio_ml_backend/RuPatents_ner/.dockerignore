@@ -17,4 +17,3 @@
 # Exclude specific requirements if necessary
 # requirements-test.txt (Uncomment if you decide to exclude this)
 
-!.venv
