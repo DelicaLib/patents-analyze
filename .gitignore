@@ -10,3 +10,5 @@ tmp
 
 label_studio_ml_backend/cache.db
 .env
+
+models_tools/NER model src/data
