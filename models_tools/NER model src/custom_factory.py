@@ -3,6 +3,7 @@ from spacy.language import Language
 from thinc.api import Config
 from sklearn.metrics import f1_score, precision_recall_fscore_support
 import plotly.express as px
+import plotly.graph_objects as go
 import json
 import os
 from pathlib import Path
@@ -26,13 +27,15 @@ upstream = "*"
 """
 DEFAULT_MODEL = Config().from_str(default_model_config)["model"]
 
+
 @Language.factory("ner_all_metrics",
-  default_config={
-    "model": DEFAULT_MODEL,
-    "moves": None,
-    "scorer": {"@scorers": "spacy.ner_scorer.v1"},
-    "incorrect_spans_key": None,
-    "update_with_oracle_cut_size": 100
+    default_config={
+        "model": DEFAULT_MODEL,
+        "moves": None,
+        "scorer": {"@scorers": "spacy.ner_scorer.v1"},
+        "incorrect_spans_key": None,
+        "update_with_oracle_cut_size": 100,
+        "eval_frequency": 100,
     },
     default_score_weights={
         "f1_micro": 1.0,
@@ -44,23 +47,37 @@ DEFAULT_MODEL = Config().from_str(default_model_config)["model"]
         "ents_p": 0.0,
         "ents_r": 0.0,
     })
-def create_ner_all_metrics(nlp, name, model, moves, scorer, incorrect_spans_key, update_with_oracle_cut_size):
-    return NERWithAllMetrics(nlp.vocab, model, name=name, moves=moves, scorer=scorer,
-                              incorrect_spans_key=incorrect_spans_key,
-                              update_with_oracle_cut_size=update_with_oracle_cut_size)
+def create_ner_all_metrics(
+    nlp, name, 
+    model, moves, 
+    scorer, incorrect_spans_key, 
+    update_with_oracle_cut_size, eval_frequency
+):
+    return NERWithAllMetrics(
+        nlp.vocab, model, 
+        name=name, moves=moves, 
+        scorer=scorer, incorrect_spans_key=incorrect_spans_key,
+        update_with_oracle_cut_size=update_with_oracle_cut_size, eval_frequency=eval_frequency
+    )
+
 
 class NERWithAllMetrics(EntityRecognizer):
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, eval_frequency=100, **kwargs):
         super().__init__(*args, **kwargs)
         self.metric_history = []
+        self.max_f1 = 0
+        self.max_f1_step = 0
+        self.eval_frequency = eval_frequency
         
     def score(self, examples, **kwargs):
         scores = super().score(examples, **kwargs)
         scores = dict(list(scores.items()) + list(self.custom_scorer(examples).items()))
-        del scores["ents_f"]
         tmp_scores = scores.copy()
-        tmp_scores["step"] = len(self.metric_history)
+        tmp_scores["step"] = len(self.metric_history) * self.eval_frequency
+        if tmp_scores["f1_macro"] > self.max_f1:
+            self.max_f1 = tmp_scores["f1_macro"]
+            self.max_f1_step = tmp_scores["step"]
         self.metric_history.append(tmp_scores)
         return scores
 
@@ -106,7 +123,7 @@ class NERWithAllMetrics(EntityRecognizer):
         for cur_metrics in self.metric_history:
             cur_step = cur_metrics["step"]
             for key, value in cur_metrics.items():
-                if key != "step":
+                if key != "step" and isinstance(value, float):
                     result["metric_name"].append(key)
                     result["metric_value"].append(value)
                     result["step"].append(cur_step)
@@ -114,8 +131,29 @@ class NERWithAllMetrics(EntityRecognizer):
 
     def save_metrics_history(self, path):
         if self.metric_history:
+
             metrics_history_to_save = self.preprocess_metric_history()
             fig = px.line(metrics_history_to_save, x="step", y="metric_value", color="metric_name")
+            for trace in fig.data:
+                if trace.name in ["f1_micro", "f1_macro", "f1_weighted"]:
+                    trace.line.width = 6
+                else:
+                    trace.line.width = 1
+
+                idx = list(trace.x).index(self.max_f1_step)
+                highlight_y = list(trace.y)[idx]
+                line_color = trace.line.color
+                line_name = trace.name
+                fig.add_trace(go.Scatter(
+                    x=[self.max_f1_step], y=[highlight_y],
+                    mode='markers+text',
+                    marker=dict(
+                        color=line_color, size=10),
+                        text=[f"{round(highlight_y, 2)}"],
+                        textposition="top center",
+                        name=f"{line_name} best"
+                    ))
+
             output_dir = os.path.join(str(path), "logs")
             os.makedirs(output_dir, exist_ok=True)
             fig_path = os.path.join(output_dir, "training_metrics.html")
@@ -129,5 +167,3 @@ class NERWithAllMetrics(EntityRecognizer):
         output_dir = Path(path)
         output_dir_metrics = output_dir.parent.parent
         self.save_metrics_history(output_dir_metrics)
-        
-        
