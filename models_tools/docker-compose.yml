@@ -6,3 +6,9 @@ services:
     working_dir: /app
     ports:
       - "8888:8888"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    runtime: nvidia
