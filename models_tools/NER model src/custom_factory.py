@@ -4,6 +4,7 @@ from thinc.api import Config
 from sklearn.metrics import f1_score, precision_recall_fscore_support
 import plotly.express as px
 import plotly.graph_objects as go
+import time
 import json
 import os
 from pathlib import Path
@@ -69,6 +70,7 @@ class NERWithAllMetrics(EntityRecognizer):
         self.max_f1 = 0
         self.max_f1_step = 0
         self.eval_frequency = eval_frequency
+        self.start_learning_time = None
         
     def score(self, examples, **kwargs):
         scores = super().score(examples, **kwargs)
@@ -130,6 +132,9 @@ class NERWithAllMetrics(EntityRecognizer):
         return result
 
     def save_metrics_history(self, path):
+        if self.start_learning_time is None:
+            self.start_learning_time = time.monotonic()
+
         if self.metric_history:
 
             metrics_history_to_save = self.preprocess_metric_history()
@@ -154,13 +159,28 @@ class NERWithAllMetrics(EntityRecognizer):
                         name=f"{line_name} best"
                     ))
 
+            current_time = time.monotonic()
+            current_time_of_training = current_time - self.start_learning_time
+            current_time_of_training_text = f"{int(current_time_of_training // 3600)} hrs {int(current_time_of_training % 3600) // 60} min {round(current_time_of_training % 60)} sec"
+
+            fig.update_layout(title = dict(
+                text="Training statistics",
+                subtitle=dict(
+                    text=f"Training time amounted to {current_time_of_training_text}",
+                    font=dict(color="gray", size=13),
+                )
+            ))
+
             output_dir = os.path.join(str(path), "logs")
             os.makedirs(output_dir, exist_ok=True)
             fig_path = os.path.join(output_dir, "training_metrics.html")
             json_path = os.path.join(output_dir, "training_metrics.json")
             fig.write_html(fig_path)
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(metrics_history_to_save, f, indent=2, ensure_ascii=False)
+                json.dump({
+                    "data": metrics_history_to_save,
+                    "train_time_s": current_time_of_training
+                }, f, indent=2, ensure_ascii=False)
 
     def to_disk(self, path, *args, **kwargs):
         super().to_disk(path, *args, **kwargs)
