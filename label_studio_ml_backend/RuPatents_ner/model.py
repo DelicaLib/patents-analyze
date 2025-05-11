@@ -6,7 +6,7 @@ import spacy
 
 nlp = spacy.load("ru_patents_ner")
 
-class NewModel(LabelStudioMLBase):
+class RuPatentsNer(LabelStudioMLBase):
     """Custom ML Backend model
     """
     

@@ -1,7 +1,11 @@
+import json
+import os
+import time
 from itertools import islice
+from pathlib import Path
 from typing import Tuple, List, Iterable, Optional, Dict, Callable, Any
 
-from spacy.scorer import PRFScore
+from sklearn.metrics import precision_recall_fscore_support, f1_score
 from thinc.types import Floats2d
 import numpy
 from spacy.training.example import Example
@@ -12,7 +16,8 @@ from spacy.vocab import Vocab
 from spacy import Language
 from thinc.model import set_dropout_rate
 from wasabi import Printer
-
+import plotly.express as px
+import plotly.graph_objects as go
 
 Doc.set_extension("rel", default={}, force=True)
 msg = Printer()
@@ -23,16 +28,22 @@ msg = Printer()
     requires=["doc.ents", "token.ent_iob", "token.ent_type"],
     assigns=["doc._.rel"],
     default_score_weights={
-        "rel_micro_p": None,
-        "rel_micro_r": None,
-        "rel_micro_f": None,
+        "rel_micro_p": 0.0,
+        "rel_micro_r": 0.0,
+        "rel_micro_f": 1.0,
+        "f1_macro": 1.0,
+        "f1_weighted": 1.0,
+        "f1_PART-OF": 1.0,
+        "f1_LOCATED-AT": 1.0,
+        "f1_CONNECTED-WITH": 1.0,
+        "f1_IN-MANNER-OF": 1.0
     },
 )
 def make_relation_extractor(
-    nlp: Language, name: str, model: Model, *, threshold: float
+    nlp: Language, name: str, model: Model, eval_frequency, *, threshold: float
 ):
     """Construct a RelationExtractor component."""
-    return RelationExtractor(nlp.vocab, model, name, threshold=threshold)
+    return RelationExtractor(nlp.vocab, model, name, threshold=threshold, eval_frequency=eval_frequency)
 
 
 class RelationExtractor(TrainablePipe):
@@ -43,12 +54,18 @@ class RelationExtractor(TrainablePipe):
         name: str = "rel",
         *,
         threshold: float,
+        eval_frequency = 100
     ) -> None:
         """Initialize a relation extractor."""
         self.vocab = vocab
         self.model = model
         self.name = name
         self.cfg = {"labels": [], "threshold": threshold}
+        self.eval_frequency = eval_frequency
+        self.start_learning_time = None
+        self.metric_history = []
+        self.max_f1 = 0
+        self.max_f1_step = 0
 
     @property
     def labels(self) -> Tuple[str]:
@@ -205,49 +222,131 @@ class RelationExtractor(TrainablePipe):
 
     def score(self, examples: Iterable[Example], **kwargs) -> Dict[str, Any]:
         """Score a batch of examples."""
-        return score_relations(examples, self.threshold)
+        scores = score_relations(examples, self.threshold)
+
+        tmp_scores = scores.copy()
+        tmp_scores["step"] = len(self.metric_history) * self.eval_frequency
+        if tmp_scores["f1_macro"] > self.max_f1:
+            self.max_f1 = tmp_scores["f1_macro"]
+            self.max_f1_step = tmp_scores["step"]
+        self.metric_history.append(tmp_scores)
+
+        return scores
+
+    def preprocess_metric_history(self):
+        result = {
+            "metric_name": [],
+            "metric_value": [],
+            "step": []
+        }
+        for cur_metrics in self.metric_history:
+            cur_step = cur_metrics["step"]
+            for key, value in cur_metrics.items():
+                if key != "step" and isinstance(value, float):
+                    result["metric_name"].append(key)
+                    result["metric_value"].append(value)
+                    result["step"].append(cur_step)
+        return result
+
+    def save_metrics_history(self, path):
+        if self.start_learning_time is None:
+            self.start_learning_time = time.monotonic()
+
+        if self.metric_history:
+
+            metrics_history_to_save = self.preprocess_metric_history()
+            fig = px.line(metrics_history_to_save, x="step", y="metric_value", color="metric_name")
+            for trace in fig.data:
+                if trace.name in ["f1_micro", "f1_macro", "f1_weighted"]:
+                    trace.line.width = 6
+                else:
+                    trace.line.width = 1
+
+                idx = list(trace.x).index(self.max_f1_step)
+                highlight_y = list(trace.y)[idx]
+                line_color = trace.line.color
+                line_name = trace.name
+                fig.add_trace(go.Scatter(
+                    x=[self.max_f1_step], y=[highlight_y],
+                    mode='markers+text',
+                    marker=dict(
+                        color=line_color, size=10),
+                        text=[f"{round(highlight_y, 2)}"],
+                        textposition="top center",
+                        name=f"{line_name} best"
+                    ))
+
+            current_time = time.monotonic()
+            current_time_of_training = current_time - self.start_learning_time
+            current_time_of_training_text = f"{int(current_time_of_training // 3600)} hrs {int(current_time_of_training % 3600) // 60} min {round(current_time_of_training % 60)} sec"
+
+            fig.update_layout(title = dict(
+                text="Training statistics",
+                subtitle=dict(
+                    text=f"Training time amounted to {current_time_of_training_text}",
+                    font=dict(color="gray", size=13),
+                )
+            ))
+
+            output_dir = os.path.join(str(path), "logs")
+            os.makedirs(output_dir, exist_ok=True)
+            fig_path = os.path.join(output_dir, "training_metrics.html")
+            json_path = os.path.join(output_dir, "training_metrics.json")
+            fig.write_html(fig_path)
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "data": metrics_history_to_save,
+                    "train_time_s": current_time_of_training
+                }, f, indent=2, ensure_ascii=False)
+
+    def to_disk(self, path, *args, **kwargs):
+        super().to_disk(path, *args, **kwargs)
+        output_dir = Path(path)
+        output_dir_metrics = output_dir.parent.parent
+        self.save_metrics_history(output_dir_metrics)
 
 
 def score_relations(examples: Iterable[Example], threshold: float) -> Dict[str, Any]:
     """Score a batch of examples."""
-    
-    # Создаём словарь для хранения PRFScore для каждого лейбла (отношения)
-    label_scores = {label: PRFScore() for label in examples[0].reference._.rel[next(iter(examples[0].reference._.rel))].keys()}
-    micro_prf = PRFScore()
-    # Проходим по всем примерам
+
+    y_true = []
+    y_pred = []
     for example in examples:
-        gold = example.reference._.rel  # Истинные данные (золотые метки)
-        pred = example.predicted._.rel  # Предсказанные отношения
-        
-        # Для каждого отношения (сущности-сущности)
+        gold = example.reference._.rel
+        pred = example.predicted._.rel
         for key, pred_dict in pred.items():
-            # Составляем список золота (метки)
             gold_labels = [k for (k, v) in gold.get(key, {}).items() if v == 1.0]
-            
-            # Проходим по каждому предсказанному отношению
             for k, v in pred_dict.items():
-                if v >= threshold:  # Если вероятность предсказания превышает порог
+                if v >= threshold:
                     if k in gold_labels:
-                        label_scores[k].tp += 1  # True Positive
-                        micro_prf.tp += 1
+                        y_true.append(k)
+                        y_pred.append(k)
                     else:
-                        label_scores[k].fp += 1  # False Positive
-                        micro_prf.fp += 1
+                        y_true.append("O")
+                        y_pred.append(k)
                 else:
                     if k in gold_labels:
-                        label_scores[k].fn += 1  # False Negative
-                        micro_prf.fn += 1
-    result = {
-        "rel_micro_p": micro_prf.precision,
-        "rel_micro_r": micro_prf.recall,
-        "rel_micro_f": micro_prf.fscore,
-    }
-    for label in examples[0].reference._.rel[next(iter(examples[0].reference._.rel))].keys():
-      result[f"{label}_micro_p"] = label_scores[label].precision
-      result[f"{label}_micro_r"] = label_scores[label].recall
-      result[f"{label}_micro_f"] = label_scores[label].fscore
-    result["overall_micro_p"] = sum([score.precision for score in label_scores.values()]) / len(label_scores)
-    result["overall_micro_r"] = sum([score.recall for score in label_scores.values()]) / len(label_scores)
-    result["overall_micro_f"] = sum([score.fscore for score in label_scores.values()]) / len(label_scores)
+                        y_true.append(k)
+                        y_pred.append("O")
+
+
+    labels = sorted({label for label in y_true if label != "O"})
+
+    precision, recall, f1, support = precision_recall_fscore_support(
+        y_true, y_pred, labels=labels, zero_division=0, average=None
+    )
+    result = {}
+    for l, p, r, f in zip(labels, precision, recall, f1):
+        result[f"f1_{l}"] = f
+
+    p, r, f1_micro, _ = precision_recall_fscore_support(
+        y_true, y_pred, labels=labels, zero_division=0, average="micro", beta=1
+    )
+
+    result["rel_micro_p"] = p
+    result["rel_micro_r"] = r
+    result["rel_micro_f"] = r
+    result["f1_macro"] = f1_score(y_true, y_pred, average="macro", labels=labels, zero_division=0)
+    result["f1_weighted"] = f1_score(y_true, y_pred, average="weighted", labels=labels, zero_division=0)
 
     return result
