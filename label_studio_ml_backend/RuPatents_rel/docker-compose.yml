@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  ml-backend:
+    container_name: ml-backend
+    image: humansignal/ml-backend:v0
+    build:
+      context: .
+      args:
+        TEST_ENV: ${TEST_ENV}
+        MODEL_NER: ${MODEL_NER}
+        MODEL_REL: ${MODEL_REL}
+        CLICKHOUSE_MIGRATE: ${CLICKHOUSE_MIGRATE}
+    environment:
+      - LOG_LEVEL=DEBUG
+      - ANY=PARAMETER
+      - WORKERS=1
+      - THREADS=8
+      - MODEL_DIR=/data/models
+      - CLICKHOUSE_DB=${CLICKHOUSE_DB}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - CLICKHOUSE_HOST=${CLICKHOUSE_HOST}
+      - CLICKHOUSE_PORT=${CLICKHOUSE_PORT}
+    ports:
+      - "9091:9090"
+    volumes:
+      - "./data/server:/data"
+      - ./clickhouse_migrations:/app/clickhouse_migrations
+      - ./model.py:/app/model.py
+      - ./_wsgi.py:/app/_wsgi.py
+    networks:
+      - labelstudio
+
+networks:
+  labelstudio:
+    external: true

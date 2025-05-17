@@ -31,12 +31,13 @@ msg = Printer()
         "rel_micro_p": 0.0,
         "rel_micro_r": 0.0,
         "rel_micro_f": 1.0,
-        "f1_macro": 1.0,
-        "f1_weighted": 1.0,
+        "rel_macro_f": 1.0,
+        "rel_weighted_f": 1.0,
         "f1_PART-OF": 1.0,
         "f1_LOCATED-AT": 1.0,
         "f1_CONNECTED-WITH": 1.0,
-        "f1_IN-MANNER-OF": 1.0
+        "f1_IN-MANNER-OF": 1.0,
+        "f1_ATTRIBUTE-FOR": 1.0
     },
 )
 def make_relation_extractor(
@@ -194,13 +195,6 @@ class RelationExtractor(TrainablePipe):
         self.model.initialize(X=doc_sample, Y=label_sample)
 
     def _examples_to_truth(self, examples: List[Example]) -> Optional[numpy.ndarray]:
-        LABELS_WEIGHTS = {
-            "PART-OF": 1,
-            "LOCATED-AT": 3.28,
-            "CONNECTED-WITH": 3.14,
-            "ATTRIBUTE-FOR": 1.57,
-            "IN-MANNER-OF": 14.29
-        }
         # check that there are actually any candidate instances in this batch of examples
         nr_instances = 0
         for eg in examples:
@@ -214,7 +208,7 @@ class RelationExtractor(TrainablePipe):
             for (e1, e2) in self.model.attrs["get_instances"](eg.reference):
                 gold_label_dict = eg.reference._.rel.get((e1.start, e2.start), {})
                 for j, label in enumerate(self.labels):
-                    truths[c, j] = gold_label_dict.get(label, 0) * LABELS_WEIGHTS[label]
+                    truths[c, j] = gold_label_dict.get(label, 0)
                 c += 1
 
         truths = self.model.ops.asarray(truths)
@@ -226,8 +220,8 @@ class RelationExtractor(TrainablePipe):
 
         tmp_scores = scores.copy()
         tmp_scores["step"] = len(self.metric_history) * self.eval_frequency
-        if tmp_scores["f1_macro"] > self.max_f1:
-            self.max_f1 = tmp_scores["f1_macro"]
+        if tmp_scores["rel_macro_f"] > self.max_f1:
+            self.max_f1 = tmp_scores["rel_macro_f"]
             self.max_f1_step = tmp_scores["step"]
         self.metric_history.append(tmp_scores)
 
@@ -257,7 +251,7 @@ class RelationExtractor(TrainablePipe):
             metrics_history_to_save = self.preprocess_metric_history()
             fig = px.line(metrics_history_to_save, x="step", y="metric_value", color="metric_name")
             for trace in fig.data:
-                if trace.name in ["f1_micro", "f1_macro", "f1_weighted"]:
+                if trace.name in ["rel_micro_f", "rel_macro_f", "rel_weighted_f"]:
                     trace.line.width = 6
                 else:
                     trace.line.width = 1
@@ -315,7 +309,7 @@ def score_relations(examples: Iterable[Example], threshold: float) -> Dict[str, 
         gold = example.reference._.rel
         pred = example.predicted._.rel
         for key, pred_dict in pred.items():
-            gold_labels = [k for (k, v) in gold.get(key, {}).items() if v == 1.0]
+            gold_labels = {k for (k, v) in gold.get(key, {}).items() if v == 1.0}
             for k, v in pred_dict.items():
                 if v >= threshold:
                     if k in gold_labels:
@@ -345,8 +339,8 @@ def score_relations(examples: Iterable[Example], threshold: float) -> Dict[str, 
 
     result["rel_micro_p"] = p
     result["rel_micro_r"] = r
-    result["rel_micro_f"] = r
-    result["f1_macro"] = f1_score(y_true, y_pred, average="macro", labels=labels, zero_division=0)
-    result["f1_weighted"] = f1_score(y_true, y_pred, average="weighted", labels=labels, zero_division=0)
+    result["rel_micro_f"] = f1_micro
+    result["rel_macro_f"] = f1_score(y_true, y_pred, average="macro", labels=labels, zero_division=0)
+    result["rel_weighted_f"] = f1_score(y_true, y_pred, average="weighted", labels=labels, zero_division=0)
 
     return result
