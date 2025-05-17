@@ -1,14 +1,21 @@
 services:
   jupyter:
-    image: jupyter/scipy-notebook
-    volumes:
-      - ./:/app
-    working_dir: /app
-    ports:
-      - "8888:8888"
+    build: .
+    container_name: jupyter-gpu
+    runtime: nvidia
     deploy:
       resources:
         reservations:
           devices:
-            - capabilities: [gpu]
-    runtime: nvidia
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./:/app
+    working_dir: /app
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - JUPYTER_ENABLE_LAB=yes

@@ -3,10 +3,22 @@ import logging
 import os
 
 from flask import Flask, request, jsonify, Response
+from flasgger import Swagger
 
 from .response import ModelResponse
 from .model import LabelStudioMLBase
 from .exceptions import exception_handler
+
+swagger_template = {
+    "swagger": "2.0",
+    "info": {
+        "title": "Label Studio ML API",
+        "description": "API for model serving in Label Studio ML Backend",
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "schemes": ["http"],
+}
 
 logger = logging.getLogger(__name__)
 
@@ -35,24 +47,43 @@ def init_app(model_class, basic_auth_user=None, basic_auth_pass=None):
 @exception_handler
 def _predict():
     """
-    Predict tasks
-
-    Example request:
-    request = {
-            'tasks': tasks,
-            'model_version': model_version,
-            'project': '{project.id}.{int(project.created_at.timestamp())}',
-            'label_config': project.label_config,
-            'params': {
-                'login': project.task_data_login,
-                'password': project.task_data_password,
-                'context': context,
-            },
-        }
-
-    @return:
-    Predictions in LS format
-    """
+        Predict tasks
+        ---
+        tags:
+          - LabelStudioML
+        parameters:
+          - name: body
+            in: body
+            required: true
+            schema:
+              type: object
+        responses:
+          200:
+            description: Successful prediction
+            schema:
+              type: object
+              properties:
+                results:
+                  type: object
+                  properties:
+                    model_version:
+                      type: string
+                    predictions:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          model_version:
+                            type: string
+                          score:
+                            type: double
+                          result:
+                            type: array
+                            items:
+                              type: object
+                    context:
+                      type: object
+        """
     data = request.json
     tasks = data.get('tasks')
     label_config = data.get('label_config')
@@ -92,6 +123,44 @@ def _predict():
 @_server.route('/setup', methods=['POST'])
 @exception_handler
 def _setup():
+    """
+        Setup model with label config
+        ---
+        tags:
+          - LabelStudioML
+        parameters:
+          - name: body
+            in: body
+            required: true
+            schema:
+              type: object
+              required:
+                - project
+                - schema
+              properties:
+                project:
+                  type: string
+                  description: Project ID in format "id.timestamp"
+                schema:
+                  type: string
+                  description: Label config (XML)
+                hostname:
+                  type: string
+                  description: hostname of the LabelStudio app
+                access_token:
+                  type: string
+                  description: access token
+                extra_params:
+                  type: string
+        responses:
+          200:
+            description: Model version
+            schema:
+              type: object
+              properties:
+                model_version:
+                  type: string
+        """
     data = request.json
     project_id = data.get('project').split('.', 1)[0]
     label_config = data.get('schema')
@@ -108,14 +177,40 @@ def _setup():
 
 TRAIN_EVENTS = (
     'ANNOTATION_CREATED',
+    'ANNOTATIONS_CREATED',
     'ANNOTATION_UPDATED',
     'ANNOTATION_DELETED',
+    'ANNOTATIONS_DELETED',
+    'TASKS_CREATED',
     'START_TRAINING'
 )
 
 
 @_server.route('/webhook', methods=['POST'])
 def webhook():
+    """
+        Receive webhook events to trigger training
+        ---
+        tags:
+          - LabelStudioML
+        parameters:
+          - name: body
+            in: body
+            required: true
+            schema:
+              type: object
+        responses:
+          201:
+            description: Training triggered
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ok, error]
+                result:
+                  type: string
+        """
     data = request.json
     event = data.pop('action')
     if event not in TRAIN_EVENTS:
@@ -137,6 +232,24 @@ def webhook():
 @_server.route('/', methods=['GET'])
 @exception_handler
 def health():
+    """
+       Health check
+       ---
+       tags:
+         - Health
+       responses:
+         200:
+           description: Server is up and model class is loaded
+           schema:
+             type: object
+             properties:
+               status:
+                 type: string
+                 example: UP
+               model_class:
+                 type: string
+                 example: LabelStudioMLBase
+       """
     return jsonify({
         'status': 'UP',
         'model_class': MODEL_CLASS.__name__
@@ -190,5 +303,14 @@ def log_request_info():
 def log_response_info(response):
     logger.debug('Response status: %s', response.status)
     logger.debug('Response headers: %s', response.headers)
-    logger.debug('Response body: %s', response.get_data())
+
+    if not response.direct_passthrough:
+        try:
+            logger.debug('Response body: %s', response.get_data())
+        except Exception as e:
+            logger.warning('Could not log response body: %s', str(e))
+
     return response
+
+
+swagger = Swagger(_server, template=swagger_template, parse=True)

@@ -13,3 +13,5 @@ label_studio_ml_backend/cache.db
 .env
 **/*.log
 **/*.pid
+
+cache.db

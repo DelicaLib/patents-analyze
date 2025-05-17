@@ -2,6 +2,7 @@ import traceback as tb
 import logging
 
 from flask import request, jsonify, make_response
+from functools import wraps
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class AnswerException(Exception):
 
 # standard exception treatment for any api function
 def exception_handler(f):
+    @wraps(f)
     def exception_f(*args, **kwargs):
         try:
             return f(*args, **kwargs)
