@@ -5,6 +5,7 @@ import os
 from flask import Flask, request, jsonify, Response
 from flasgger import Swagger
 
+from RuPatents_rel.model import RuPatentsRel
 from .response import ModelResponse
 from .model import LabelStudioMLBase
 from .exceptions import exception_handler
@@ -25,6 +26,156 @@ logger = logging.getLogger(__name__)
 _server = Flask(__name__)
 MODEL_CLASS = LabelStudioMLBase
 BASIC_AUTH = None
+
+_server.config['SWAGGER'] = {
+    "definitions": {
+        "ResultLabel": {
+            "type": "object",
+            "properties": {
+                "from_name": {"type": "string", "enum": ["label"], "example": "label"},
+                "id": {"type": "integer"},
+                "to_name": {"type": "string", "enum": ["text"], "example": "text"},
+                "type": {"type": "string", "enum": ["labels"], "example": "labels"},
+                "value": {
+                    "type": "object",
+                    "properties": {
+                        "start": {"type": "integer"},
+                        "end": {"type": "integer"},
+                        "text": {"type": "string"},
+                        "labels": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["start", "end", "text", "labels"],
+                },
+            },
+            "required": ["from_name", "id", "to_name", "type", "value"],
+        },
+        "ResultRelation": {
+            "type": "object",
+            "properties": {
+                "from_id": {"type": "integer"},
+                "to_id": {"type": "integer"},
+                "type": {"type": "string", "enum": ["relation"], "example": "relation"},
+                "direction": {"type": "string", "enum": ["right", "left", "bi"], "example": "right"},
+                "labels": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["from_id", "to_id", "type", "direction", "labels"],
+        },
+        "ResultDatabaseID": {
+            "type": "object",
+            "properties": {
+                "from_name": {"type": "string", "enum": ["database_id"], "example": "database_id"},
+                "to_name": {"type": "string", "enum": ["text"], "example": "text"},
+                "type": {"type": "string", "enum": ["textarea"], "example": "textarea"},
+                "origin": {"type": "string", "enum": ["manual"], "example": "manual"},
+                "value": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["text"],
+                },
+            },
+            "required": ["from_name", "origin", "to_name", "type", "value"],
+        },
+        'AnnotationResponseItem': {
+            'type': 'object',
+            'required': ['annotations', 'data', 'meta'],
+            'properties': {
+                'annotations': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'result': {
+                                'type': 'array',
+                                'items': {
+                                    'oneOf': [
+                                        {'$ref': '#/definitions/ResultLabel'},
+                                        {'$ref': '#/definitions/ResultRelation'},
+                                        {'$ref': '#/definitions/ResultDatabaseID'}
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                'data': {
+                    'type': 'object',
+                    'properties': {
+                        'text': {'type': 'string'}
+                    }
+                },
+                'meta': {
+                    'type': 'object',
+                    'properties': {
+                        'database_id': {'type': 'string'},
+                        'url': {'type': 'string'}
+                    }
+                }
+            }
+        },
+        'AnnotationRequestItem': {
+            'type': 'object',
+            'required': ['annotations', 'data', 'meta'],
+            'properties': {
+                'annotations': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'result': {
+                                'type': 'array',
+                                'items': {
+                                    'oneOf': [
+                                        {'$ref': '#/definitions/ResultLabel'},
+                                        {'$ref': '#/definitions/ResultRelation'},
+                                        {'$ref': '#/definitions/ResultDatabaseID'}
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                'data': {
+                    'type': 'object',
+                    'properties': {
+                        'text': {'type': 'string'}
+                    }
+                },
+                'meta': {
+                    'type': 'object',
+                    'properties': {
+                        'database_id': {'type': 'string'},
+                        'url': {'type': 'string'}
+                    }
+                }
+            },
+            'additionalProperties': True
+        },
+        'ErrorResponse': {
+            'type': 'object',
+            'properties': {
+                'status': {'type': 'integer'},
+                'detail': {'type': 'string'},
+                'request': {'type': 'object'},
+                'result': {
+                    'type': 'object',
+                    'properties': {
+                        'traceback': {'type': 'string'},
+                        'valid_urls': {
+                            'type': 'array',
+                            'items': {'type': 'string'}
+                        },
+                        'invalid_urls': {
+                            'type': 'array',
+                            'items': {'type': 'string'}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 
 def init_app(model_class, basic_auth_user=None, basic_auth_pass=None):
@@ -47,7 +198,7 @@ def init_app(model_class, basic_auth_user=None, basic_auth_pass=None):
 @exception_handler
 def _predict():
     """
-        Predict tasks
+        Обработать задачи с помощью нейросетевой модели
         ---
         tags:
           - LabelStudioML
@@ -59,7 +210,7 @@ def _predict():
               type: object
         responses:
           200:
-            description: Successful prediction
+            description: Успешная обработка
             schema:
               type: object
               properties:
@@ -124,7 +275,7 @@ def _predict():
 @exception_handler
 def _setup():
     """
-        Setup model with label config
+        Настроить модель
         ---
         tags:
           - LabelStudioML
@@ -140,7 +291,7 @@ def _setup():
               properties:
                 project:
                   type: string
-                  description: Project ID in format "id.timestamp"
+                  description: id проекта
                 schema:
                   type: string
                   description: Label config (XML)
@@ -149,12 +300,11 @@ def _setup():
                   description: hostname of the LabelStudio app
                 access_token:
                   type: string
-                  description: access token
                 extra_params:
                   type: string
         responses:
           200:
-            description: Model version
+            description: Версия модели
             schema:
               type: object
               properties:
@@ -189,7 +339,7 @@ TRAIN_EVENTS = (
 @_server.route('/webhook', methods=['POST'])
 def webhook():
     """
-        Receive webhook events to trigger training
+        Получить вебхук от labelstudio app
         ---
         tags:
           - LabelStudioML
@@ -210,7 +360,7 @@ def webhook():
                   enum: [ok, error]
                 result:
                   type: string
-        """
+    """
     data = request.json
     event = data.pop('action')
     if event not in TRAIN_EVENTS:
@@ -233,13 +383,13 @@ def webhook():
 @exception_handler
 def health():
     """
-       Health check
+       Проверка работоспособности
        ---
        tags:
          - Health
        responses:
          200:
-           description: Server is up and model class is loaded
+           description: Сервер работает и модель настроена
            schema:
              type: object
              properties:
@@ -254,6 +404,168 @@ def health():
         'status': 'UP',
         'model_class': MODEL_CLASS.__name__
     })
+
+@_server.route('/api/annotation/text', methods=['POST'])
+@exception_handler
+def annotate_text():
+    """
+        Обработать текст с помощью нейросетевой модели
+        ---
+        tags:
+            - API
+        parameters:
+            - name: body
+              in: body
+              required: true
+              schema:
+                  type: array
+                  items:
+                      type: object
+                      properties:
+                          text:
+                              type: string
+                              description: Текст реферата патента
+        responses:
+            200:
+                description: Размеченные данные в формате labelstudio
+                schema:
+                    type: array
+                    items:
+                        $ref: '#/definitions/AnnotationResponseItem'
+    """
+    data = request.json
+
+    model = RuPatentsRel()
+    result = model.annotate_texts(data)
+
+    return jsonify(result)
+
+@_server.route('/api/select/annotation/from_url', methods=['POST'])
+@exception_handler
+def annotate_patents_from_url():
+    """
+        Обработать патенты с помощью нейросетевой модели
+        ---
+        tags:
+            - API
+        parameters:
+            - name: body
+              in: body
+              required: true
+              schema:
+                  type: array
+                  items:
+                      type: object
+                      properties:
+                          url:
+                              type: string
+                              description: Ссылка на патент
+        responses:
+            200:
+                description: Размеченные данные в формате labelstudio
+                schema:
+                    type: array
+                    items:
+                        $ref: '#/definitions/AnnotationResponseItem'
+            400:
+                description: Неверный формат данных
+                schema:
+                    $ref: '#/definitions/ErrorResponse'
+            404:
+                description: Некоротые URL не найдены
+                schema:
+                    $ref: '#/definitions/ErrorResponse'
+
+    """
+    data = request.json
+
+    model = RuPatentsRel()
+    result = model.get_annotation_by_url(data)
+
+    return jsonify(result)
+
+@_server.route('/api/annotation/from_url', methods=['POST'])
+@exception_handler
+def get_patents_from_url():
+    """
+        Получить разметку в формате labelstudio по ссылкам на патенты
+        ---
+        tags:
+            - API
+        parameters:
+            - name: body
+              in: body
+              required: true
+              schema:
+                  type: object
+                  properties:
+                      items:
+                          type: array
+                          items:
+                              type: object
+                              properties:
+                                  url:
+                                      type: string
+                                      description: Ссылка на патент
+                              required:
+                                  - url
+                      annotate_if_exist:
+                          type: boolean
+                          description: Создать новую аннотацию, если аннотации уже присутствуют
+                  required:
+                      - items
+                      - annotate_if_exist
+        responses:
+            200:
+                description: Размеченные данные в формате labelstudio
+                schema:
+                    type: array
+                    items:
+                        $ref: '#/definitions/AnnotationResponseItem'
+            400:
+                description: Неверный формат данных
+                schema:
+                    $ref: '#/definitions/ErrorResponse'
+            404:
+                description: Некоротые URL не найдены
+                schema:
+                    $ref: '#/definitions/ErrorResponse'
+
+    """
+    data = request.json
+
+    model = RuPatentsRel()
+    result = model.annotate_patents_from_url(data["items"], data["annotate_if_exist"])
+
+    return jsonify(result)
+
+@_server.route('/api/insert/annotation', methods=['POST'])
+@exception_handler
+def get_patents_from_url():
+    """
+        Получить разметку в формате labelstudio по ссылкам на патенты
+        ---
+        tags:
+            - API
+        parameters:
+            - name: body
+              in: body
+              required: true
+              schema:
+                  $ref: '#/definitions/ErrorResponse'
+        responses:
+            200:
+                description: Размеченные данные в формате labelstudio
+                schema:
+                    type: string
+
+    """
+    data = request.json
+
+    model = RuPatentsRel()
+    result = model.insert_annotations(data)
+
+    return jsonify(result)
 
 
 @_server.route('/metrics', methods=['GET'])

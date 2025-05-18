@@ -1,10 +1,11 @@
 CREATE OR REPLACE TABLE components
 (
-    id UInt64,
+    id UUID DEFAULT generateUUIDv4(),
     annotation_id UUID,
+    token_id UInt32,
     start UInt32,
     end UInt32,
     labels Array(String),
     text String
 ) ENGINE = MergeTree()
-ORDER BY id
+ORDER BY (annotation_id, id)
