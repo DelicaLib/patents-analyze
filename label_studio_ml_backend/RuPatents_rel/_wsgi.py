@@ -5,7 +5,7 @@ import logging
 import logging.config
 
 # Set a default log level if LOG_LEVEL is not defined
-log_level = os.getenv("LOG_LEVEL", "INFO")
+log_level = os.getenv("LOG_LEVEL", "DEBUG")
 
 logging.config.dictConfig({
   "version": 1,

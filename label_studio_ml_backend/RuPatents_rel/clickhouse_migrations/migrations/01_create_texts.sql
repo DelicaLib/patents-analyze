@@ -5,4 +5,3 @@ CREATE OR REPLACE TABLE texts
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY id
-

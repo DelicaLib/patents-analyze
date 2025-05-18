@@ -5,3 +5,5 @@ plotly==6.1.0
 clickhouse-connect==0.8.17
 Flask-RESTful==0.3.10
 flasgger==0.9.7.1
+requests==2.32.3
+python-dateutil==2.9.0
