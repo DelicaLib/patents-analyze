@@ -8,6 +8,8 @@
 # Include Python application files
 !*.py
 
+!label_studio_ml
+
 # Include requirements files
 !requirements*.txt
 

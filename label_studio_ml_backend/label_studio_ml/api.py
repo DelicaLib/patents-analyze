@@ -33,7 +33,7 @@ _server.config['SWAGGER'] = {
             "type": "object",
             "properties": {
                 "from_name": {"type": "string", "enum": ["label"], "example": "label"},
-                "id": {"type": "integer"},
+                "id": {"type": "string"},
                 "to_name": {"type": "string", "enum": ["text"], "example": "text"},
                 "type": {"type": "string", "enum": ["labels"], "example": "labels"},
                 "value": {
@@ -52,8 +52,8 @@ _server.config['SWAGGER'] = {
         "ResultRelation": {
             "type": "object",
             "properties": {
-                "from_id": {"type": "integer"},
-                "to_id": {"type": "integer"},
+                "from_id": {"type": "string"},
+                "to_id": {"type": "string"},
                 "type": {"type": "string", "enum": ["relation"], "example": "relation"},
                 "direction": {"type": "string", "enum": ["right", "left", "bi"], "example": "right"},
                 "labels": {"type": "array", "items": {"type": "string"}},
@@ -444,7 +444,7 @@ def annotate_text():
 @exception_handler
 def annotate_patents_from_url():
     """
-        Обработать патенты с помощью нейросетевой модели
+        Получить разметку в формате labelstudio по ссылкам на патенты
         ---
         tags:
             - API
@@ -488,7 +488,7 @@ def annotate_patents_from_url():
 @exception_handler
 def get_patents_from_url():
     """
-        Получить разметку в формате labelstudio по ссылкам на патенты
+        Обработать патенты с помощью нейросетевой модели
         ---
         tags:
             - API
@@ -541,9 +541,9 @@ def get_patents_from_url():
 
 @_server.route('/api/insert/annotation', methods=['POST'])
 @exception_handler
-def get_patents_from_url():
+def insert_annotations():
     """
-        Получить разметку в формате labelstudio по ссылкам на патенты
+        Вставить новую разметку из json в формате labelstudio
         ---
         tags:
             - API
@@ -552,12 +552,16 @@ def get_patents_from_url():
               in: body
               required: true
               schema:
-                  $ref: '#/definitions/ErrorResponse'
+                  type: array
+                  items:
+                      $ref: '#/definitions/AnnotationRequestItem'
         responses:
             200:
                 description: Размеченные данные в формате labelstudio
                 schema:
-                    type: string
+                    type: array
+                    items:
+                        $ref: '#/definitions/AnnotationResponseItem'
 
     """
     data = request.json

@@ -26,9 +26,10 @@ services:
       - "9091:9090"
     volumes:
       - "./data/server:/data"
-      - ./clickhouse_migrations:/app/clickhouse_migrations
-      - ./model.py:/app/model.py
-      - ./_wsgi.py:/app/_wsgi.py
+      - ./clickhouse_migrations:/app/RuPatents_rel/clickhouse_migrations
+      - ./model.py:/app/RuPatents_rel/model.py
+      - ./_wsgi.py:/app/RuPatents_rel/_wsgi.py
+      - ../label_studio_ml:/app/label_studio_ml
     networks:
       - labelstudio
 

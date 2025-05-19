@@ -74,8 +74,8 @@ RUN --mount=type=cache,target=${PIP_CACHE_DIR},sharing=locked \
       pip install -r requirements-test.txt; \
     fi
 
-COPY . .
+COPY .. .
 
 EXPOSE 9090
 
-CMD gunicorn --preload --reload --bind :$PORT --workers $WORKERS --threads $THREADS --timeout 0 _wsgi:app
+CMD gunicorn --preload --reload --bind :$PORT --workers $WORKERS --threads $THREADS --timeout 0 RuPatents_rel._wsgi:app
