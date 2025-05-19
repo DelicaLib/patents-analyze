@@ -129,6 +129,7 @@ class RuPatentsRel(LabelStudioMLBase):
         else:
             all_patents_text = [patent[1] for patent in all_patents]
             url_to_result = {}
+        logger.debug(all_patents)
         docs = nlp_ner.pipe(all_patents_text, disable=["tagger", "parser"])
         for i, doc in enumerate(docs):
             cur_url = all_patents[i][0]
@@ -165,8 +166,107 @@ class RuPatentsRel(LabelStudioMLBase):
 
         return results
 
-    def insert_annotations(self, data: list[dict]):
-        pass
+    def insert_annotations(self, data: list[dict]) -> list[dict]:
+        new_tasks, old_tasks = self._separate_tasks_from_db(data)
+        self._insert_new_tasks(new_tasks)
+        self._insert_old_tasks(old_tasks)
+        return data
+
+    def _separate_tasks_from_db(self, tasks: list[dict]) -> tuple[list[dict], list[dict]]:
+        new_tasks = []
+        task_text_ids = []
+        task_text_urls_google = []
+        task_text_urls_yandex = []
+        key_to_task = {}
+
+        for task in tasks:
+            if task.get("meta", {}).get("database_id") is not None:
+                text_id = task.get("meta", {}).get("database_id")
+                task_text_ids.append(text_id)
+                key_to_task[text_id] = task
+            elif task.get("meta", {}).get("url") is not None:
+                url = task.get("meta", {}).get("url").replace('\\', '')
+                task['meta']['url'] = url
+                parsed = urlparse(url)
+                if parsed.netloc == "patents.google.com":
+                    task_text_urls_google.append(url)
+                else:
+                    task_text_urls_yandex.append(url)
+                key_to_task[url] = task
+            else:
+                new_tasks.append(task)
+
+        patents_yandex, patents_google = self.clickhouse.select_patent_by_urls(
+            task_text_urls_yandex, task_text_urls_google
+        )
+        texts = self.clickhouse.select_patent_by_text_ids(task_text_ids)
+        all_keys_from_db = set([patent[0] for patent in patents_yandex + patents_google + texts])
+        not_exist_keys = set()
+        for key, task in key_to_task.items():
+            if key not in all_keys_from_db:
+                not_exist_keys.add(key)
+        for key in not_exist_keys:
+            new_tasks.append(key_to_task.pop(key))
+
+        old_tasks = list(key_to_task.values())
+
+        return new_tasks, old_tasks
+
+    def _separate_annotations_from_db(self, tasks: list[dict]) -> tuple[list[dict], dict, dict, dict]:
+        new_annotations = []
+        annotation_id_to_annotation = {}
+        annotation_id_to_url = {}
+        annotation_id_to_text_id = {}
+        for task in tasks:
+            text_id = task.get("meta", {}).get("database_id")
+            url = task.get("meta", {}).get("url")
+            for annotation in task['annotations']:
+                annotation_id = None
+                textarea_idx = None
+                for i, result in enumerate(annotation['result']):
+                    if result['type'] == 'textarea':
+                        textarea_idx = i
+                        if len(result['value']['text']) == 0:
+                            break
+                        annotation_id = result['value']['text'][0]
+                        annotation_id_to_annotation[annotation_id] = annotation
+                        if text_id is not None:
+                            annotation_id_to_text_id[annotation_id] = text_id
+                        else:
+                            annotation_id_to_url[annotation_id] = url
+                        break
+                if annotation_id is None:
+                    new_annotations.append(annotation)
+                    if text_id is not None:
+                        annotation_id_to_text_id[len(new_annotations) - 1] = text_id
+                    else:
+                        annotation_id_to_url[len(new_annotations) - 1] = url
+                else:
+                    annotation['result'].pop(textarea_idx)
+        if len(annotation_id_to_url) > 0:
+            annotation_ids, urls = zip(*annotation_id_to_url.items())
+            annotations_id_from_db = self.clickhouse.select_annotations_by_urls_and_ids(
+                urls, annotation_ids
+            )
+        else:
+            annotations_id_from_db = []
+        if len(annotation_id_to_text_id) > 0:
+            annotation_ids, text_ids = zip(*annotation_id_to_text_id.items())
+            annotations_id_from_db += self.clickhouse.select_annotations_by_text_ids_and_ids(
+                text_ids, annotation_ids
+            )
+        else:
+            annotations_id_from_db += []
+        annotations_id_from_db = set(annotations_id_from_db)
+        not_exist_ids = set()
+        for annotation_id in annotation_id_to_annotation:
+            if annotation_id not in annotations_id_from_db:
+                not_exist_ids.add(annotation_id)
+        for annotation_id in not_exist_ids:
+
+            new_annotations.append(annotation_id_to_annotation.pop(annotation_id))
+
+        return new_annotations, annotation_id_to_annotation, annotation_id_to_url, annotation_id_to_text_id
 
     def _generate_labelstuio_task(self, patents_from_db, url_to_annotations) -> dict:
         url_to_task = {}
@@ -186,6 +286,60 @@ class RuPatentsRel(LabelStudioMLBase):
                 "annotations": annotations
             }
         return url_to_task
+
+    def _insert_new_tasks(self, tasks: list[dict]) -> None:
+        if len(tasks) == 0:
+            return
+        new_ids = self.clickhouse.insert_raw_texts([task['data']['text'] for task in tasks])
+        for new_id, task in zip(new_ids, tasks):
+            task['meta'] = {'database_id': new_id}
+            for annotation in task['annotations']:
+                annotation_id = self.clickhouse.insert_annotation(annotation, text_id=new_id)
+                annotation["result"].append(
+                    {
+                        "from_name": "database_id",
+                        "origin": "manual",
+                        "to_name": "text",
+                        "type": "textarea",
+                        "value": {
+                            "text": [annotation_id]
+                        }
+                    }
+                )
+
+    def _insert_old_tasks(self, tasks: list[dict]) -> None:
+        new_annotations, old_annotations, annotation_id_to_url, annotation_id_to_text_id = self._separate_annotations_from_db(tasks)
+        for i, annotation in enumerate(new_annotations):
+            if annotation_id_to_url.get(i) is not None:
+                annotation_id = self.clickhouse.insert_annotation(annotation, url_id=annotation_id_to_url.get(i))
+            else:
+                annotation_id = self.clickhouse.insert_annotation(annotation, text_id=annotation_id_to_text_id.get(i))
+            annotation["result"].append(
+                    {
+                        "from_name": "database_id",
+                        "origin": "manual",
+                        "to_name": "text",
+                        "type": "textarea",
+                        "value": {
+                            "text": [annotation_id]
+                        }
+                    }
+                )
+
+        for annotation_id, annotation in old_annotations.items():
+            self.clickhouse.replace_annotation(annotation, annotation_id)
+            annotation["result"].append(
+                {
+                    "from_name": "database_id",
+                    "origin": "manual",
+                    "to_name": "text",
+                    "type": "textarea",
+                    "value": {
+                        "text": [annotation_id]
+                    }
+                }
+            )
+
 
     def _preprocess_patents_from_url(self, urls: list[dict], *, run_parse: bool = False)\
             -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
@@ -231,7 +385,7 @@ class RuPatentsRel(LabelStudioMLBase):
                 'from_name': from_name,
                 'to_name': to_name,
                 'type': 'labels',
-                'id': ent.start,
+                'id': str(ent.start),
                 'value': {
                     'start': ent.start_char,
                     'end': ent.end_char,
@@ -246,8 +400,8 @@ class RuPatentsRel(LabelStudioMLBase):
                     cur_max_relation = max(rel_dict.items(), key=lambda x: x[1])
                     if cur_max_relation[1] >= THRESHOLD:
                         result.append({
-                            'from_id': entity.start,
-                            'to_id': entity_b.start,
+                            'from_id': str(entity.start),
+                            'to_id': str(entity_b.start),
                             'type': 'relation',
                             'direction': 'right',
                             'labels': [cur_max_relation[0]]
