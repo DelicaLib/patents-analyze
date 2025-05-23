@@ -9,7 +9,7 @@ models_tools/NER model src/data
 .venv
 tmp
 
-label_studio_ml_backend/cache.db
+src/cache.db
 **/*.log
 **/*.pid
 

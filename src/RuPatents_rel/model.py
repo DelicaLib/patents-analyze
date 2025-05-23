@@ -340,7 +340,6 @@ class RuPatentsRel(LabelStudioMLBase):
                 }
             )
 
-
     def _preprocess_patents_from_url(self, urls: list[dict], *, run_parse: bool = False)\
             -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[str]]:
         urls_list = [i['url'] for i in urls]

@@ -28,7 +28,7 @@ services:
       - "./data/server:/data"
       - ./clickhouse_migrations:/app/RuPatents_rel/clickhouse_migrations
       - ./model.py:/app/RuPatents_rel/model.py
-      - ./_wsgi.py:/app/RuPatents_rel/_wsgi.py
+      - ./main.py:/app/RuPatents_rel/main.py
       - ../label_studio_ml:/app/label_studio_ml
     networks:
       - labelstudio
