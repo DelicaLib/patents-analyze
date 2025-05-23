@@ -78,4 +78,4 @@ COPY .. .
 
 EXPOSE 9090
 
-CMD gunicorn --preload --reload --bind :$PORT --workers $WORKERS --threads $THREADS --timeout 0 RuPatents_rel._wsgi:app
+CMD gunicorn --preload --reload --bind :$PORT --workers $WORKERS --threads $THREADS --timeout 0 RuPatents_rel.main:app

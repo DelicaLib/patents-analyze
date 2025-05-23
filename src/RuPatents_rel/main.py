@@ -1,7 +1,6 @@
 import os
 import argparse
 import json
-import logging
 import logging.config
 
 # Set a default log level if LOG_LEVEL is not defined
