@@ -336,48 +336,6 @@ TRAIN_EVENTS = (
 )
 
 
-@_server.route('/webhook', methods=['POST'])
-def webhook():
-    """
-        Получить вебхук от labelstudio app
-        ---
-        tags:
-          - LabelStudioML
-        parameters:
-          - name: body
-            in: body
-            required: true
-            schema:
-              type: object
-        responses:
-          201:
-            description: Training triggered
-            schema:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum: [ok, error]
-                result:
-                  type: string
-    """
-    data = request.json
-    event = data.pop('action')
-    if event not in TRAIN_EVENTS:
-        return jsonify({'status': 'Unknown event'}), 200
-    project_id = str(data['project']['id'])
-    label_config = data['project']['label_config']
-    model = MODEL_CLASS(project_id, label_config=label_config)
-    result = model.fit(event, data)
-
-    try:
-        response = jsonify({'result': result, 'status': 'ok'})
-    except Exception as e:
-        response = jsonify({'error': str(e), 'status': 'error'})
-
-    return response, 201
-
-
 @_server.route('/health', methods=['GET'])
 @_server.route('/', methods=['GET'])
 @exception_handler
@@ -404,6 +362,7 @@ def health():
         'status': 'UP',
         'model_class': MODEL_CLASS.__name__
     })
+
 
 @_server.route('/api/annotation/text', methods=['POST'])
 @exception_handler
@@ -439,6 +398,7 @@ def annotate_text():
     result = model.annotate_texts(data)
 
     return jsonify(result)
+
 
 @_server.route('/api/select/annotation/from_url', methods=['POST'])
 @exception_handler
@@ -483,6 +443,7 @@ def annotate_patents_from_url():
     result = model.get_annotation_by_url(data)
 
     return jsonify(result)
+
 
 @_server.route('/api/annotation/from_url', methods=['POST'])
 @exception_handler
@@ -539,6 +500,7 @@ def get_patents_from_url():
 
     return jsonify(result)
 
+
 @_server.route('/api/insert/annotation', methods=['POST'])
 @exception_handler
 def insert_annotations():
@@ -572,12 +534,6 @@ def insert_annotations():
     return jsonify(result)
 
 
-@_server.route('/metrics', methods=['GET'])
-@exception_handler
-def metrics():
-    return jsonify({})
-
-
 @_server.errorhandler(FileNotFoundError)
 def file_not_found_error_handler(error):
     logger.warning('Got error: ' + str(error))
@@ -598,15 +554,6 @@ def index_error(error):
 
 def safe_str_cmp(a, b):
     return hmac.compare_digest(a, b)
-
-
-@_server.before_request
-def check_auth():
-    if BASIC_AUTH is not None:
-
-        auth = request.authorization
-        if not auth or not (safe_str_cmp(auth.username, BASIC_AUTH[0]) and safe_str_cmp(auth.password, BASIC_AUTH[1])):
-            return Response('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="Login required"'})
 
 
 @_server.before_request

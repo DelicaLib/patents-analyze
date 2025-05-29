@@ -1,34 +1,52 @@
-This guide describes the simplest way to start using ML backend with Label Studio.
+## Подготовка к запуску
 
-## Running with Docker (Recommended)
+1. Запуск парсера и бд
 
-1. Start Machine Learning backend on `http://localhost:9090` with prebuilt image:
+Чтобы запустить парсер и базы данных можно следовать инструкции, описанной в [patent-parser](https://github.com/iamsuchafitta/patent-parser/tree/243d530f77947e85cbcd63a5788a87d6bb7b1fca)
+
+3. Выполнить миграции для бэкенда
+
+Для этого необходимо установить библиотеку clickhouse_connect:
+
+```bash
+pip install clickhouse_connect
+```
+
+И выполнить код в [clickhouse_migrations](https://github.com/DelicaLib/patents-analyze/tree/main/src/RuPatents_rel/clickhouse_migrations)
+
+```bash
+python main.py
+```
+
+## Запуск с помощью Docker (Рекомендовано)
+
+4. Запуск бэкенда `http://localhost:9090` с пресобранного Image:
 
 ```bash
 docker-compose up
 ```
 
-2. Validate that backend is running
+5. Проверка работоспособности сервера
 
 ```bash
 $ curl http://localhost:9090/
 {"status":"UP"}
 ```
 
-3. Connect to the backend from Label Studio running on the same host: go to your project `Settings -> Machine Learning -> Add Model` and specify `http://localhost:9090` as a URL.
+6. Подключение Label Studio к бэкенду, если Label Studio находится на той же машине: перейдите в проект `Settings -> Machine Learning -> Add Model` и укажите `http://localhost:9090` как URL.
 
 
-## Building from source (Advanced)
+## Сборка из источников (Продвинутый)
 
-To build the ML backend from source, you have to clone the repository and build the Docker image:
+Чтобы собрать бэкенд fиз источников, вы можете склонировать репозиторий и собрать docker image:
 
 ```bash
 docker-compose build
 ```
 
-## Running without Docker (Advanced)
+## Запуск без Docker (Продвинутый)
 
-To run the ML backend without Docker, you have to clone the repository and install all dependencies using pip:
+Чтобы запустить бэкенд без Docker, необходимо склонировать репозиторий и установить все зависимости:
 
 ```bash
 python -m venv ml-backend
@@ -36,23 +54,18 @@ source ml-backend/bin/activate
 pip install -r requirements.txt
 ```
 
-Then you can start the ML backend:
+Затем можно запустить сам бэкенд:
 
 ```bash
-label-studio-ml start ./dir_with_your_model
+python main.py
 ```
 
-# Configuration
-Parameters can be set in `docker-compose.yml` before running the container.
+# Конфигурация
+Параметры, которые можно выставить в `docker-compose.yml` перед запуском контейнера.
 
 
-The following common parameters are available:
-- `BASIC_AUTH_USER` - specify the basic auth user for the model server
-- `BASIC_AUTH_PASS` - specify the basic auth password for the model server
-- `LOG_LEVEL` - set the log level for the model server
-- `WORKERS` - specify the number of workers for the model server
-- `THREADS` - specify the number of threads for the model server
-
-# Customization
-
-The ML backend can be customized by adding your own models and logic inside the `./dir_with_your_model` directory. 
+Доступны следующие параметры:
+- `LOG_LEVEL` - установить уровень логирования
+- `WORKERS` - установить количество workers
+- `THREADS` - установить количество потоков
+ 
